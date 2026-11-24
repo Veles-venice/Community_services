@@ -12,7 +12,7 @@ const ON_VERCEL = Boolean(process.env.VERCEL);
 // Vercel's filesystem is read-only except /tmp, which is temporary.
 const DATA_DIR = process.env.DATA_DIR || (ON_VERCEL ? '/tmp/stockroom' : path.join(__dirname, 'data'));
 const PASSWORD = process.env.APP_PASSWORD || ''; // optional: set to require a login
-const CURRENCY = /^[A-Z]{3}$/.test(process.env.CURRENCY || '') ? process.env.CURRENCY : 'USD';
+const CURRENCY = /^[A-Z]{3}$/.test(process.env.CURRENCY || '') ? process.env.CURRENCY : 'INR';
 const PUBLIC_DIR = path.join(__dirname, 'public');
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -50,13 +50,13 @@ db.exec(`
 function seedDemo() {
   if (db.prepare('SELECT COUNT(*) AS c FROM items').get().c) return;
   const items = [
-    ['Rice 25kg bag', 'FD-001', 'Food', 'bag', 24, 10],
-    ['Cooking oil 5L', 'FD-002', 'Food', 'can', 11, 8],
-    ['Lentils 10kg', 'FD-003', 'Food', 'bag', 15, 6],
-    ['Blankets', 'HH-001', 'Household', 'pcs', 9, 20],
-    ['Soap bars', 'HY-001', 'Hygiene', 'box', 6, 10],
-    ['Notebooks', 'ED-001', 'Education', 'pcs', 1.2, 50],
-    ['First-aid kits', 'MD-001', 'Medical', 'kit', 18, 5],
+    ['Rice 25kg bag', 'FD-001', 'Food', 'bag', 1200, 10],
+    ['Cooking oil 5L', 'FD-002', 'Food', 'can', 750, 8],
+    ['Lentils 10kg', 'FD-003', 'Food', 'bag', 1100, 6],
+    ['Blankets', 'HH-001', 'Household', 'pcs', 450, 20],
+    ['Soap bars', 'HY-001', 'Hygiene', 'box', 300, 10],
+    ['Notebooks', 'ED-001', 'Education', 'pcs', 40, 50],
+    ['First-aid kits', 'MD-001', 'Medical', 'kit', 700, 5],
   ];
   const ins = db.prepare('INSERT INTO items (name, sku, category, unit, unit_cost, reorder_level) VALUES (?,?,?,?,?,?)');
   items.forEach((i) => ins.run(...i));
