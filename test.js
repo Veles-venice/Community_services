@@ -52,6 +52,13 @@ server.listen(0, async () => {
     const csv = await call('GET', '/api/export/movements.csv');
     assert.match(csv.h.get('content-type'), /text\/csv/); assert.match(csv.j, /'=cmd/); assert.match(csv.j, /"Donor, Inc"/);
     assert.match((await call('GET', '/api/export/items.csv')).j, /Rice 25kg/);
+    assert.equal((await call('GET', '/api/reports/period?range=year')).s, 400);
+    for (const r of ['day', 'week', 'month']) {
+      const p = await call('GET', '/api/reports/period?range=' + r); assert.equal(p.s, 200, r);
+      assert.equal(p.j.totals.in_value, 220); assert.equal(p.j.totals.out_value, 154);
+      assert.equal(p.j.items[0].opening, 0); assert.equal(p.j.items[0].closing, 3); assert.equal(p.j.movements.length, 2);
+    }
+    assert.equal((await call('GET', '/api/reports/period')).j.range, 'week');
 
     assert.equal((await call('DELETE', `/api/movements/${out.j.id}`)).s, 200);
     assert.equal((await call('DELETE', `/api/movements/${inn.j.id}`)).s, 200);

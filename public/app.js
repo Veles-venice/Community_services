@@ -193,12 +193,38 @@
     await load();
   }
 
+  const fmtDate = (d) => new Date(d + 'T00:00:00Z').toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+
   async function viewReports() {
-    const [months, items] = await Promise.all([api('/api/reports/monthly'), api('/api/items')]);
+    const q = new URLSearchParams(location.hash.split('?')[1] || '');
+    const range = ['day', 'week', 'month'].includes(q.get('range')) ? q.get('range') : 'week';
+    const [r, months, items] = await Promise.all([api('/api/reports/period?range=' + range), api('/api/reports/monthly'), api('/api/items')]);
+    const label = { day: 'Daily', week: 'Weekly', month: 'Monthly' }[range];
+    const period = r.from === r.to ? fmtDate(r.to) : `${fmtDate(r.from)} – ${fmtDate(r.to)}`;
     app.innerHTML = `
-      <p class="eyebrow">03 — Accounts</p>
-      <div class="head"><h1>Reports</h1><div class="actions"><button class="btn ghost" data-act="print">Print</button></div></div>
-      <p class="lede">Monthly value received and distributed, and current stock position.</p>
+      <p class="eyebrow noprint">03 — Accounts</p>
+      <div class="head noprint"><h1>Reports</h1><div class="actions">
+        ${['day', 'week', 'month'].map((k) => `<a class="btn ${k === range ? 'on' : 'ghost'}" ${k === range ? 'aria-current="page"' : ''} href="#/reports?range=${k}">${{ day: '1 day', week: '1 week', month: '1 month' }[k]}</a>`).join('')}
+        <a class="btn ghost" href="/api/export/movements.csv?from=${r.from}&to=${r.to}" download>CSV</a>
+        <button class="btn ghost" data-act="print">Print report</button></div></div>
+      <article class="sheet">
+        <header class="sheet-head"><div><p class="eyebrow">Stock report</p><h2 class="sheet-title">${label} report</h2><p class="muted">${esc(period)}</p></div>
+          <div class="muted right">Stockroom<br>Generated ${esc(fmtDate(r.generated.slice(0, 10)))}</div></header>
+        <div class="stats">
+          <div class="stat"><b>${money(r.totals.in_value)}</b><span>Received</span></div>
+          <div class="stat"><b>${money(r.totals.out_value)}</b><span>Distributed</span></div>
+          <div class="stat"><b>${money(r.totals.in_value - r.totals.out_value)}</b><span>Net</span></div>
+          <div class="stat"><b>${r.totals.movements}</b><span>Movements</span></div>
+        </div>
+        <h3>Stock by item</h3>
+        ${r.items.length ? `<div class="tbl-wrap"><table><thead><tr><th>Item</th><th class="right">Opening</th><th class="right">In</th><th class="right">Out</th><th class="right">Closing</th><th class="right">Value out</th></tr></thead><tbody>
+          ${r.items.map((i) => `<tr><td>${esc(i.name)}</td><td class="right num">${qty(i.opening)}</td><td class="right num">${qty(i.in_qty)}</td><td class="right num">${qty(i.out_qty)}</td><td class="right num">${qty(i.closing)} ${esc(i.unit)}</td><td class="right num">${money(i.out_value)}</td></tr>`).join('')}
+          </tbody></table></div>` : '<div class="empty">No stock activity in this period.</div>'}
+        <h3>Movements</h3>${movTable(r.movements, false)}
+        ${r.low_stock.length ? `<h3>Needs restocking</h3><div class="tbl-wrap"><table><tbody>${r.low_stock.map((i) => `<tr><td>${esc(i.name)}</td><td class="right num">${qty(i.closing)} ${esc(i.unit)} left</td><td class="right"><span class="tag fill">Low</span></td></tr>`).join('')}</tbody></table></div>` : ''}
+        <div class="sign"><div>Prepared by</div><div>Received by (store)</div></div>
+      </article>
+      <div class="noprint">
       <section><div class="section-head"><h2>By month</h2></div>
         ${months.length ? `<div class="tbl-wrap"><table><thead><tr><th>Month</th><th class="right">Movements</th><th class="right">In</th><th class="right">Out</th><th class="right">Net</th></tr></thead><tbody>
         ${months.map((m) => `<tr><td class="num">${esc(m.month)}</td><td class="right num">${m.movements}</td><td class="right num">${money(m.in_value)}</td><td class="right num">${money(m.out_value)}</td><td class="right num">${money(m.in_value - m.out_value)}</td></tr>`).join('')}
@@ -206,7 +232,8 @@
       <section class="section"><div class="section-head"><h2>Stock position</h2><span class="muted">Total ${money(items.reduce((s, i) => s + i.stock_value, 0))}</span></div>
         ${items.length ? `<div class="tbl-wrap"><table><thead><tr><th>Item</th><th class="right">In stock</th><th class="right">Unit cost</th><th class="right">Value</th></tr></thead><tbody>
         ${items.map((i) => `<tr><td>${esc(i.name)}</td><td class="right num">${qty(i.stock)} ${esc(i.unit)}</td><td class="right num">${money(i.unit_cost)}</td><td class="right num">${money(i.stock_value)}</td></tr>`).join('')}
-        </tbody></table></div>` : '<div class="empty">No items yet.</div>'}</section>`;
+        </tbody></table></div>` : '<div class="empty">No items yet.</div>'}</section>
+      </div>`;
   }
 
   function view404() {

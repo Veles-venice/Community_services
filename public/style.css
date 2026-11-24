@@ -54,6 +54,7 @@ h2 { font-size: 22px; letter-spacing: -0.02em; margin: 0; }
 .btn:hover { background: var(--paper); color: var(--ink); }
 .btn.ghost { background: var(--paper); color: var(--ink); }
 .btn.ghost:hover { background: var(--ink); color: var(--paper); }
+.btn.on, .btn.on:hover { background: var(--ink); color: var(--paper); }
 .btn.sm { padding: 6px 12px; font-size: 13px; }
 .btn[disabled] { opacity: .4; cursor: not-allowed; }
 .link { background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; font-size: 14px; }
@@ -123,4 +124,13 @@ dialog::backdrop { background: rgba(255,255,255,.85); }
   .tools input, .tools select { flex: 1; }
   #toast { right: 16px; left: 16px; bottom: 16px; max-width: none; }
 }
-@media print { .top, .foot, .actions, .tools, #toast, .menu-btn { display: none !important; } }
+/* report sheet */
+.sheet { border: 1px solid var(--ink); padding: 36px; margin: 28px 0 72px; }
+.sheet-head { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding-bottom: 24px; }
+.sheet-title { font-size: 34px; letter-spacing: -0.04em; margin: 0 0 4px; }
+.sheet h3 { font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: var(--mute); margin: 40px 0 4px; font-weight: 500; }
+.sign { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; margin-top: 72px; }
+.sign div { border-top: 1px solid var(--ink); padding-top: 8px; font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--mute); }
+@media (max-width: 760px) { .sheet { padding: 20px 16px; } .sign { gap: 24px; } }
+@page { margin: 14mm; }
+@media print { .top, .foot, .actions, .tools, #toast, .menu-btn, .noprint { display: none !important; } .sheet { border: 0; padding: 0; margin: 0; } main.wrap { padding: 0; } tr { break-inside: avoid; } }

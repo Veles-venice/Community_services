@@ -72,6 +72,7 @@ function seedDemo() {
     [1, 'out', 32, 'Riverside Community', 'Monthly distribution', 9], [3, 'out', 30, 'Old Town Shelter', 'Weekly supply', 7],
     [5, 'out', 95, 'North Camp', 'Hygiene kits', 5], [2, 'out', 28, 'Old Town Shelter', 'Weekly supply', 3],
     [1, 'in', 20, 'Green Valley Foundation', 'Top-up', 2],
+    [3, 'in', 25, 'City Wholesale', 'Purchase', 0], [2, 'out', 4, 'Riverside Community', 'Walk-in request', 0],
   ].forEach(([id, type, q, party, note, ago]) =>
     mv.run(id, type, q, items[id - 1][4], party, note, day(ago)));
 }
@@ -240,6 +241,40 @@ route('GET', '/api/reports/monthly', () =>
       COUNT(*) AS movements
     FROM movements GROUP BY month ORDER BY month DESC LIMIT 24`).all());
 
+// Store report for one day, one week (7 days) or one month (30 days), ending today.
+const RANGE_DAYS = { day: 0, week: 6, month: 29 };
+route('GET', '/api/reports/period', ({ query }) => {
+  const range = query.range || 'week';
+  if (!(range in RANGE_DAYS)) throw new HttpError(400, 'range must be day, week or month');
+  const to = today();
+  const from = new Date(Date.parse(to) - RANGE_DAYS[range] * 864e5).toISOString().slice(0, 10);
+  const stats = new Map(db.prepare('SELECT id, name, unit, reorder_level FROM items').all()
+    .map((i) => [i.id, { ...i, opening: 0, in_qty: 0, out_qty: 0, in_value: 0, out_value: 0 }]));
+  const movements = [];
+  for (const m of db.prepare(`${MOV_SQL} WHERE m.date <= ? ORDER BY m.date DESC, m.id DESC`).all(to)) {
+    const st = stats.get(m.item_id);
+    const sign = m.type === 'in' ? 1 : -1;
+    if (m.date < from) { st.opening += sign * m.quantity; continue; }
+    st[m.type + '_qty'] += m.quantity;
+    st[m.type + '_value'] += m.quantity * m.unit_value;
+    movements.push(m);
+  }
+  const rows = [...stats.values()].map((r) => ({
+    ...r, opening: round(r.opening), in_qty: round(r.in_qty), out_qty: round(r.out_qty),
+    in_value: round(r.in_value), out_value: round(r.out_value),
+    closing: round(r.opening + r.in_qty - r.out_qty),
+  })).filter((r) => r.opening || r.in_qty || r.out_qty || r.closing)
+    .sort((a, b) => a.name.localeCompare(b.name));
+  const sum = (k) => round(rows.reduce((t, r) => t + r[k], 0));
+  return {
+    range, from, to, generated: new Date().toISOString(),
+    totals: { in_value: sum('in_value'), out_value: sum('out_value'), movements: movements.length },
+    items: rows,
+    low_stock: rows.filter((r) => r.reorder_level > 0 && r.closing <= r.reorder_level),
+    movements,
+  };
+});
+
 route('GET', '/api/export/items.csv', () => ({
   csv: toCsv(db.prepare(`${STOCK_SQL} GROUP BY i.id ORDER BY i.name COLLATE NOCASE`).all().map(withValue),
     ['id', 'name', 'sku', 'category', 'unit', 'unit_cost', 'reorder_level', 'stock', 'stock_value']),
@@ -284,6 +319,16 @@ function authorised(req) {
 }
 
 function readBody(req) {
+  // Vercel's Node runtime may already have consumed and parsed the stream into req.body.
+  let pre;
+  try { pre = req.body; } catch { return Promise.reject(new HttpError(400, 'Invalid JSON')); }
+  if (pre !== undefined && pre !== null) {
+    if (Buffer.isBuffer(pre) || typeof pre === 'string') {
+      try { return Promise.resolve(JSON.parse(String(pre) || '{}')); }
+      catch { return Promise.reject(new HttpError(400, 'Invalid JSON')); }
+    }
+    if (typeof pre === 'object') return Promise.resolve(pre);
+  }
   return new Promise((resolve, reject) => {
     let size = 0; const chunks = [];
     req.on('data', (c) => {
