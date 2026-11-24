@@ -1,0 +1,123 @@
+REPORT FEATURE - exact code to paste (3 files, 4 small changes)
+================================================================
+Gives you: Reports page with 1 day / 1 week / 1 month tabs, a ready-made
+printable store report (summary, stock by item with opening/closing, movements,
+restock list, signature lines), CSV download and a Print button.
+
+--------------------------------------------------------------------
+1) server.js
+   Find this line:   route('GET', '/api/export/items.csv', () => ({
+   Paste the block below on the lines JUST ABOVE it.
+--------------------------------------------------------------------
+// Store report for one day, one week (7 days) or one month (30 days), ending today.
+const RANGE_DAYS = { day: 0, week: 6, month: 29 };
+route('GET', '/api/reports/period', ({ query }) => {
+  const range = query.range || 'week';
+  if (!(range in RANGE_DAYS)) throw new HttpError(400, 'range must be day, week or month');
+  const to = today();
+  const from = new Date(Date.parse(to) - RANGE_DAYS[range] * 864e5).toISOString().slice(0, 10);
+  const stats = new Map(db.prepare('SELECT id, name, unit, reorder_level FROM items').all()
+    .map((i) => [i.id, { ...i, opening: 0, in_qty: 0, out_qty: 0, in_value: 0, out_value: 0 }]));
+  const movements = [];
+  for (const m of db.prepare(`${MOV_SQL} WHERE m.date <= ? ORDER BY m.date DESC, m.id DESC`).all(to)) {
+    const st = stats.get(m.item_id);
+    const sign = m.type === 'in' ? 1 : -1;
+    if (m.date < from) { st.opening += sign * m.quantity; continue; }
+    st[m.type + '_qty'] += m.quantity;
+    st[m.type + '_value'] += m.quantity * m.unit_value;
+    movements.push(m);
+  }
+  const rows = [...stats.values()].map((r) => ({
+    ...r, opening: round(r.opening), in_qty: round(r.in_qty), out_qty: round(r.out_qty),
+    in_value: round(r.in_value), out_value: round(r.out_value),
+    closing: round(r.opening + r.in_qty - r.out_qty),
+  })).filter((r) => r.opening || r.in_qty || r.out_qty || r.closing)
+    .sort((a, b) => a.name.localeCompare(b.name));
+  const sum = (k) => round(rows.reduce((t, r) => t + r[k], 0));
+  return {
+    range, from, to, generated: new Date().toISOString(),
+    totals: { in_value: sum('in_value'), out_value: sum('out_value'), movements: movements.length },
+    items: rows,
+    low_stock: rows.filter((r) => r.reorder_level > 0 && r.closing <= r.reorder_level),
+    movements,
+  };
+});
+
+--------------------------------------------------------------------
+2) public/app.js
+   Find the old function that starts with:  async function viewReports() {
+   It ends just before:  function view404() {
+   DELETE the old viewReports function and paste this in its place.
+--------------------------------------------------------------------
+  const fmtDate = (d) => new Date(d + 'T00:00:00Z').toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+
+  async function viewReports() {
+    const q = new URLSearchParams(location.hash.split('?')[1] || '');
+    const range = ['day', 'week', 'month'].includes(q.get('range')) ? q.get('range') : 'week';
+    const [r, months, items] = await Promise.all([api('/api/reports/period?range=' + range), api('/api/reports/monthly'), api('/api/items')]);
+    const label = { day: 'Daily', week: 'Weekly', month: 'Monthly' }[range];
+    const period = r.from === r.to ? fmtDate(r.to) : `${fmtDate(r.from)} – ${fmtDate(r.to)}`;
+    app.innerHTML = `
+      <p class="eyebrow noprint">03 — Accounts</p>
+      <div class="head noprint"><h1>Reports</h1><div class="actions">
+        ${['day', 'week', 'month'].map((k) => `<a class="btn ${k === range ? 'on' : 'ghost'}" ${k === range ? 'aria-current="page"' : ''} href="#/reports?range=${k}">${{ day: '1 day', week: '1 week', month: '1 month' }[k]}</a>`).join('')}
+        <a class="btn ghost" href="/api/export/movements.csv?from=${r.from}&to=${r.to}" download>CSV</a>
+        <button class="btn ghost" data-act="print">Print report</button></div></div>
+      <article class="sheet">
+        <header class="sheet-head"><div><p class="eyebrow">Stock report</p><h2 class="sheet-title">${label} report</h2><p class="muted">${esc(period)}</p></div>
+          <div class="muted right">Stockroom<br>Generated ${esc(fmtDate(r.generated.slice(0, 10)))}</div></header>
+        <div class="stats">
+          <div class="stat"><b>${money(r.totals.in_value)}</b><span>Received</span></div>
+          <div class="stat"><b>${money(r.totals.out_value)}</b><span>Distributed</span></div>
+          <div class="stat"><b>${money(r.totals.in_value - r.totals.out_value)}</b><span>Net</span></div>
+          <div class="stat"><b>${r.totals.movements}</b><span>Movements</span></div>
+        </div>
+        <h3>Stock by item</h3>
+        ${r.items.length ? `<div class="tbl-wrap"><table><thead><tr><th>Item</th><th class="right">Opening</th><th class="right">In</th><th class="right">Out</th><th class="right">Closing</th><th class="right">Value out</th></tr></thead><tbody>
+          ${r.items.map((i) => `<tr><td>${esc(i.name)}</td><td class="right num">${qty(i.opening)}</td><td class="right num">${qty(i.in_qty)}</td><td class="right num">${qty(i.out_qty)}</td><td class="right num">${qty(i.closing)} ${esc(i.unit)}</td><td class="right num">${money(i.out_value)}</td></tr>`).join('')}
+          </tbody></table></div>` : '<div class="empty">No stock activity in this period.</div>'}
+        <h3>Movements</h3>${movTable(r.movements, false)}
+        ${r.low_stock.length ? `<h3>Needs restocking</h3><div class="tbl-wrap"><table><tbody>${r.low_stock.map((i) => `<tr><td>${esc(i.name)}</td><td class="right num">${qty(i.closing)} ${esc(i.unit)} left</td><td class="right"><span class="tag fill">Low</span></td></tr>`).join('')}</tbody></table></div>` : ''}
+        <div class="sign"><div>Prepared by</div><div>Received by (store)</div></div>
+      </article>
+      <div class="noprint">
+      <section><div class="section-head"><h2>By month</h2></div>
+        ${months.length ? `<div class="tbl-wrap"><table><thead><tr><th>Month</th><th class="right">Movements</th><th class="right">In</th><th class="right">Out</th><th class="right">Net</th></tr></thead><tbody>
+        ${months.map((m) => `<tr><td class="num">${esc(m.month)}</td><td class="right num">${m.movements}</td><td class="right num">${money(m.in_value)}</td><td class="right num">${money(m.out_value)}</td><td class="right num">${money(m.in_value - m.out_value)}</td></tr>`).join('')}
+        </tbody></table></div>` : '<div class="empty">No data yet.</div>'}</section>
+      <section class="section"><div class="section-head"><h2>Stock position</h2><span class="muted">Total ${money(items.reduce((s, i) => s + i.stock_value, 0))}</span></div>
+        ${items.length ? `<div class="tbl-wrap"><table><thead><tr><th>Item</th><th class="right">In stock</th><th class="right">Unit cost</th><th class="right">Value</th></tr></thead><tbody>
+        ${items.map((i) => `<tr><td>${esc(i.name)}</td><td class="right num">${qty(i.stock)} ${esc(i.unit)}</td><td class="right num">${money(i.unit_cost)}</td><td class="right num">${money(i.stock_value)}</td></tr>`).join('')}
+        </tbody></table></div>` : '<div class="empty">No items yet.</div>'}</section>
+      </div>`;
+  }
+
+--------------------------------------------------------------------
+3) public/style.css
+   Find the ONE line that starts with:  @media print { .top, .foot
+   REPLACE that whole line with everything below.
+--------------------------------------------------------------------
+.btn.on, .btn.on:hover { background: var(--ink); color: var(--paper); }
+
+/* report sheet */
+.sheet { border: 1px solid var(--ink); padding: 36px; margin: 28px 0 72px; }
+.sheet-head { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding-bottom: 24px; }
+.sheet-title { font-size: 34px; letter-spacing: -0.04em; margin: 0 0 4px; }
+.sheet h3 { font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: var(--mute); margin: 40px 0 4px; font-weight: 500; }
+.sign { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; margin-top: 72px; }
+.sign div { border-top: 1px solid var(--ink); padding-top: 8px; font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--mute); }
+@media (max-width: 760px) { .sheet { padding: 20px 16px; } .sign { gap: 24px; } }
+@page { margin: 14mm; }
+@media print { .top, .foot, .actions, .tools, #toast, .menu-btn, .noprint { display: none !important; } .sheet { border: 0; padding: 0; margin: 0; } main.wrap { padding: 0; } tr { break-inside: avoid; } }
+
+--------------------------------------------------------------------
+OPTIONAL (demo only) - server.js
+   So the "1 day" report isn't empty on the Vercel demo, find this line:
+     [1, 'in', 20, 'Green Valley Foundation', 'Top-up', 2],
+   and paste these two entries on the line right after it:
+     [3, 'in', 25, 'City Wholesale', 'Purchase', 0], [2, 'out', 4, 'Riverside Community', 'Walk-in request', 0],
+--------------------------------------------------------------------
+4) Commit all three files to GitHub. Vercel redeploys by itself.
+--------------------------------------------------------------------
+Safer option: instead of pasting, upload the three full files from
+stockroom.tar.gz (server.js, public/app.js, public/style.css).
