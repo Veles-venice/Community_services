@@ -3,8 +3,8 @@
   const $ = (s, r = document) => r.querySelector(s);
   const app = $('#app'), dlg = $('#dlg'), toastEl = $('#toast');
   const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  let currency = 'USD';
-  const money = (n) => new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(n || 0);
+  let currency = 'INR';
+  const money = (n) => new Intl.NumberFormat('en-IN', { style: 'currency', currency }).format(n || 0);
   const qty = (n) => new Intl.NumberFormat(undefined, { maximumFractionDigits: 3 }).format(n || 0);
   const today = () => new Date().toISOString().slice(0, 10);
   $('#year').textContent = new Date().getFullYear();
