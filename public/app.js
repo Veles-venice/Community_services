@@ -195,10 +195,31 @@
 
   const fmtDate = (d) => new Date(d + 'T00:00:00Z').toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
 
+  // Fallback: build the same report in the browser from the basic item and movement lists,
+  // so the Reports page still works if the report endpoint is unavailable.
+  async function periodFromClient(range) {
+    const days = { day: 0, week: 6, month: 29 }[range];
+    const to = today();
+    const from = new Date(Date.parse(to) - days * 864e5).toISOString().slice(0, 10);
+    const [list, moves] = await Promise.all([api('/api/items'), api('/api/movements?to=' + to)]);
+    const st = new Map(list.map((i) => [i.id, { id: i.id, name: i.name, unit: i.unit, reorder_level: i.reorder_level, opening: 0, in_qty: 0, out_qty: 0, in_value: 0, out_value: 0 }]));
+    const inRange = [];
+    for (const m of moves) {
+      const x = st.get(m.item_id); if (!x) continue;
+      if (m.date < from) { x.opening += m.type === 'in' ? m.quantity : -m.quantity; continue; }
+      x[m.type + '_qty'] += m.quantity; x[m.type + '_value'] += m.quantity * m.unit_value; inRange.push(m);
+    }
+    const r3 = (n) => Math.round(n * 1000) / 1000;
+    const rows = [...st.values()].map((x) => ({ ...x, opening: r3(x.opening), in_qty: r3(x.in_qty), out_qty: r3(x.out_qty), in_value: r3(x.in_value), out_value: r3(x.out_value), closing: r3(x.opening + x.in_qty - x.out_qty) }))
+      .filter((x) => x.opening || x.in_qty || x.out_qty || x.closing).sort((a, b) => a.name.localeCompare(b.name));
+    const sum = (k) => r3(rows.reduce((t, x) => t + x[k], 0));
+    return { range, from, to, generated: new Date().toISOString(), totals: { in_value: sum('in_value'), out_value: sum('out_value'), movements: inRange.length }, items: rows, low_stock: rows.filter((x) => x.reorder_level > 0 && x.closing <= x.reorder_level), movements: inRange };
+  }
+
   async function viewReports() {
     const q = new URLSearchParams(location.hash.split('?')[1] || '');
     const range = ['day', 'week', 'month'].includes(q.get('range')) ? q.get('range') : 'week';
-    const [r, months, items] = await Promise.all([api('/api/reports/period?range=' + range), api('/api/reports/monthly'), api('/api/items')]);
+    const [r, months, items] = await Promise.all([api('/api/reports/period?range=' + range).catch(() => periodFromClient(range)), api('/api/reports/monthly').catch(() => []), api('/api/items')]);
     const label = { day: 'Daily', week: 'Weekly', month: 'Monthly' }[range];
     const period = r.from === r.to ? fmtDate(r.to) : `${fmtDate(r.from)} – ${fmtDate(r.to)}`;
     app.innerHTML = `
