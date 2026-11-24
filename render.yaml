@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: stockroom
+    runtime: docker
+    plan: starter
+    healthCheckPath: /api/health
+    envVars:
+      - key: DATA_DIR
+        value: /data
+      - key: APP_PASSWORD
+        sync: false
+      - key: CURRENCY
+        value: USD
+    disk:
+      name: stockroom-data
+      mountPath: /data
+      sizeGB: 1

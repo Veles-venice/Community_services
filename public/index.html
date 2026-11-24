@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Stockroom — Inventory &amp; Accounts</title>
+  <meta name="description" content="A simple record of what came in and what went out.">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="top">
+    <div class="wrap bar">
+      <a class="brand" href="#/">Stockroom<span>.</span></a>
+      <button class="menu-btn" id="menuBtn" aria-label="Toggle menu" aria-expanded="false">Menu</button>
+      <nav id="nav" aria-label="Main">
+        <a href="#/" data-route="">Overview</a>
+        <a href="#/items" data-route="items">Items</a>
+        <a href="#/movements" data-route="movements">Movements</a>
+        <a href="#/reports" data-route="reports">Reports</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="wrap" id="app" tabindex="-1" aria-live="polite"></main>
+
+  <footer class="wrap foot">
+    <span>Stockroom — one record of what came in and what went out.</span>
+    <span id="year"></span>
+  </footer>
+
+  <dialog id="dlg"></dialog>
+  <div id="toast" role="status"></div>
+  <script src="/app.js"></script>
+</body>
+</html>

@@ -1,44 +1,13 @@
 {
-  "name": "kirana-manager",
+  "name": "stockroom",
   "version": "1.0.0",
+  "description": "Minimal inventory and accounting app for NGOs and small shops",
   "private": true,
-  "main": "electron/main.cjs",
+  "main": "server.js",
   "scripts": {
-    "dev": "concurrently -k \"vite --host 127.0.0.1\" \"wait-on http://127.0.0.1:5173 && electron .\"",
-    "build": "vite build",
-    "start": "electron .",
-    "postinstall": "electron-builder install-app-deps",
-    "dist": "npm run build && electron-builder --win"
+    "start": "node server.js",
+    "test": "node test.js"
   },
-  "dependencies": {
-    "better-sqlite3": "^12.2.0",
-    "lucide-react": "^0.468.0",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1"
-  },
-  "devDependencies": {
-    "@vitejs/plugin-react": "^4.3.4",
-    "concurrently": "^9.1.2",
-    "electron": "^33.2.1",
-    "electron-builder": "^25.1.8",
-    "vite": "^6.0.5",
-    "wait-on": "^8.0.1"
-  },
-  "build": {
-    "appId": "com.kirana.manager",
-    "productName": "Kirana Manager",
-    "files": [
-      "dist/**/*",
-      "electron/**/*",
-      "package.json"
-    ],
-    "win": {
-      "target": "nsis"
-    }
-  },
-  "allowScripts": {
-    "better-sqlite3@12.11.1": true,
-    "electron@33.2.1": true,
-    "esbuild@0.25.12": true
-  }
+  "engines": { "node": ">=22.5.0" },
+  "license": "MIT"
 }
