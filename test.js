@@ -12,10 +12,11 @@ server.listen(0, async () => {
     return { s: r.status, j, h: r.headers };
   };
   try {
-    for (const p of ['/', '/index.html', '/style.css', '/app.js', '/favicon.svg', '/items', '/reports']) {
+    for (const p of ['/', '/index.html', '/style.css', '/app.js', '/favicon.svg', '/404.html']) {
       const r = await call('GET', p); assert.equal(r.s, 200, p);
     }
     assert.equal((await call('GET', '/nope.js')).s, 404);
+    const nf = await call('GET', '/items'); assert.equal(nf.s, 404); assert.match(nf.j, /Page not found/);
     assert.equal((await call('GET', '/../server.js')).s === 200, false);
     assert.equal((await call('GET', '/api/health')).j.ok, true);
     assert.equal((await call('GET', '/api/config')).j.currency, 'USD');

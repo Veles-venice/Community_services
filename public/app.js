@@ -22,10 +22,29 @@
   }
 
   let toastTimer;
-  function toast(msg) {
-    toastEl.textContent = msg; toastEl.classList.add('show');
-    clearTimeout(toastTimer); toastTimer = setTimeout(() => toastEl.classList.remove('show'), 2600);
+  function toast(msg, kind) {
+    toastEl.className = kind === 'err' ? 'err' : '';
+    toastEl.innerHTML = `<b>${kind === 'err' ? 'Error' : 'Done'}</b><span>${esc(msg)}</span>`;
+    void toastEl.offsetWidth; toastEl.classList.add('show');
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => toastEl.classList.remove('show'), kind === 'err' ? 4500 : 2600);
   }
+
+  // Boxy replacement for window.confirm()
+  const cfm = $('#cfm');
+  function confirmBox(title, text, okLabel) {
+    return new Promise((resolve) => {
+      cfm.innerHTML = `<form class="dlg" method="dialog"><h2 id="cfm-title">${esc(title)}</h2>
+        <p class="muted cfm-text">${esc(text)}</p>
+        <div class="foot-row"><button type="button" class="btn ghost" data-no>Cancel</button><button type="submit" class="btn" data-yes>${esc(okLabel)}</button></div></form>`;
+      let result = false;
+      $('[data-no]', cfm).addEventListener('click', () => cfm.close());
+      $('form', cfm).addEventListener('submit', (e) => { e.preventDefault(); result = true; cfm.close(); });
+      cfm.addEventListener('close', () => resolve(result), { once: true });
+      cfm.showModal();
+      $('[data-no]', cfm).focus();
+    });
+  }
+  cfm.addEventListener('click', (e) => { if (e.target === cfm) cfm.close(); });
 
   // ---------- modal ----------
   function openModal(html, onSubmit) {
@@ -75,7 +94,7 @@
 
   async function movementModal(preset = {}, after) {
     const items = await api('/api/items');
-    if (!items.length) { toast('Add an item first'); location.hash = '#/items'; return; }
+    if (!items.length) { toast('Add an item first', 'err'); location.hash = '#/items'; return; }
     const t = preset.type || 'in';
     openModal(`<h2>Record movement</h2>
       <div class="field"><label>Type</label><div class="seg">
@@ -170,7 +189,7 @@
       $('#exp').href = '/api/export/movements.csv?' + p;
       $('#list').innerHTML = movTable(await api('/api/movements?' + p), true);
     };
-    ['f-type', 'f-item', 'f-from', 'f-to'].forEach((id) => $('#' + id).addEventListener('change', () => load().catch((e) => toast(e.message))));
+    ['f-type', 'f-item', 'f-from', 'f-to'].forEach((id) => $('#' + id).addEventListener('change', () => load().catch((e) => toast(e.message, 'err'))));
     await load();
   }
 
@@ -201,6 +220,7 @@
     document.querySelectorAll('nav a').forEach((a) => a.classList.toggle('on', a.dataset.route === key));
     $('#nav').classList.remove('open'); $('#menuBtn').setAttribute('aria-expanded', 'false');
     if (dlg.open) dlg.close();
+    if (cfm.open) cfm.close();
     const v = views[key];
     try {
       if (v) await v(); else view404();
@@ -225,13 +245,13 @@
       else if (act === 'rec') movementModal({ item_id: id }, render);
       else if (act === 'mov') movementModal({ type: el.dataset.type }, render);
       else if (act === 'del-item') {
-        if (!confirm('Delete this item?')) return;
+        if (!(await confirmBox('Delete item?', 'This permanently removes the item from your catalogue.', 'Delete'))) return;
         await api(`/api/items/${id}`, { method: 'DELETE' }); toast('Item deleted'); render();
       } else if (act === 'del-mov') {
-        if (!confirm('Delete this movement?')) return;
+        if (!(await confirmBox('Delete movement?', 'This entry will be removed from the ledger and stock will be recalculated.', 'Delete'))) return;
         await api(`/api/movements/${id}`, { method: 'DELETE' }); toast('Movement deleted'); render();
       }
-    } catch (ex) { toast(ex.message); }
+    } catch (ex) { toast(ex.message, 'err'); }
   });
   $('#menuBtn').addEventListener('click', () => {
     const open = $('#nav').classList.toggle('open');

@@ -14,7 +14,15 @@ Minimal inventory and accounting web app for an NGO or small shop. Items, stock 
 | `APP_PASSWORD` | If set, the site asks for this password (any username) | off |
 | `CURRENCY` | 3-letter currency code, e.g. `INR`, `EUR` | `USD` |
 
-## Deploy
+## Deploy on Vercel (demo / sharing)
+1. Push this folder to a GitHub repo.
+2. In Vercel: **Add New → Project →** import the repo. Framework preset: **Other**. No build command, no environment variables needed.
+3. Deploy. The site opens pre-filled with demo data (items and movements) so it's ready to show.
+
+Vercel's filesystem is temporary, so on Vercel the data is **demo-only**: it resets on redeploys and idle periods, and can differ between server instances. For real records use Render/Docker below (persistent disk), or ask to add a hosted Postgres.
+`APP_PASSWORD` only protects the API on Vercel (static pages are public by design), so don't put real data there.
+
+## Deploy with persistent data
 **Docker (any host):** `docker build -t stockroom . && docker run -p 3000:3000 -v stockroom-data:/data -e APP_PASSWORD=choose-one stockroom`
 
 **Render:** push this folder to GitHub, create a Blueprint from `render.yaml`, set `APP_PASSWORD`. The 1 GB disk keeps data between deploys.

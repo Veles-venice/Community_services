@@ -8,7 +8,9 @@ const crypto = require('node:crypto');
 const { DatabaseSync } = require('node:sqlite');
 
 const PORT = Number(process.env.PORT) || 3000;
-const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
+const ON_VERCEL = Boolean(process.env.VERCEL);
+// Vercel's filesystem is read-only except /tmp, which is temporary.
+const DATA_DIR = process.env.DATA_DIR || (ON_VERCEL ? '/tmp/stockroom' : path.join(__dirname, 'data'));
 const PASSWORD = process.env.APP_PASSWORD || ''; // optional: set to require a login
 const CURRENCY = /^[A-Z]{3}$/.test(process.env.CURRENCY || '') ? process.env.CURRENCY : 'USD';
 const PUBLIC_DIR = path.join(__dirname, 'public');
@@ -42,6 +44,38 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_mov_item ON movements(item_id);
   CREATE INDEX IF NOT EXISTS idx_mov_date ON movements(date);
 `);
+
+
+// ---------- demo data (Vercel previews or DEMO_DATA=1, only when the database is empty) ----------
+function seedDemo() {
+  if (db.prepare('SELECT COUNT(*) AS c FROM items').get().c) return;
+  const items = [
+    ['Rice 25kg bag', 'FD-001', 'Food', 'bag', 24, 10],
+    ['Cooking oil 5L', 'FD-002', 'Food', 'can', 11, 8],
+    ['Lentils 10kg', 'FD-003', 'Food', 'bag', 15, 6],
+    ['Blankets', 'HH-001', 'Household', 'pcs', 9, 20],
+    ['Soap bars', 'HY-001', 'Hygiene', 'box', 6, 10],
+    ['Notebooks', 'ED-001', 'Education', 'pcs', 1.2, 50],
+    ['First-aid kits', 'MD-001', 'Medical', 'kit', 18, 5],
+  ];
+  const ins = db.prepare('INSERT INTO items (name, sku, category, unit, unit_cost, reorder_level) VALUES (?,?,?,?,?,?)');
+  items.forEach((i) => ins.run(...i));
+  const day = (ago) => new Date(Date.now() - ago * 864e5).toISOString().slice(0, 10);
+  const mv = db.prepare('INSERT INTO movements (item_id, type, quantity, unit_value, party, note, date) VALUES (?,?,?,?,?,?,?)');
+  [ // item, type, qty, party, note, days ago
+    [1, 'in', 80, 'Green Valley Foundation', 'Quarterly donation', 62], [2, 'in', 60, 'City Wholesale', 'Purchase', 60],
+    [3, 'in', 40, 'City Wholesale', 'Purchase', 60], [4, 'in', 120, 'Rotary Club', 'Winter drive', 45],
+    [5, 'in', 100, 'City Wholesale', 'Purchase', 40], [6, 'in', 400, 'Book Aid', 'School term supply', 38],
+    [7, 'in', 30, 'Health Dept.', 'Donation', 30],
+    [1, 'out', 30, 'Riverside Community', 'Monthly distribution', 28], [2, 'out', 25, 'Riverside Community', 'Monthly distribution', 28],
+    [4, 'out', 60, 'North Camp', 'Winter distribution', 21], [6, 'out', 250, 'Hope School', 'Term start', 18],
+    [1, 'out', 32, 'Riverside Community', 'Monthly distribution', 9], [3, 'out', 30, 'Old Town Shelter', 'Weekly supply', 7],
+    [5, 'out', 95, 'North Camp', 'Hygiene kits', 5], [2, 'out', 28, 'Old Town Shelter', 'Weekly supply', 3],
+    [1, 'in', 20, 'Green Valley Foundation', 'Top-up', 2],
+  ].forEach(([id, type, q, party, note, ago]) =>
+    mv.run(id, type, q, items[id - 1][4], party, note, day(ago)));
+}
+if (ON_VERCEL || process.env.DEMO_DATA === '1') seedDemo();
 
 // ---------- helpers ----------
 class HttpError extends Error {
@@ -273,16 +307,15 @@ function serveStatic(req, res, pathname) {
   if (!file.startsWith(PUBLIC_DIR + path.sep)) return send(res, 403, 'Forbidden');
   let target = file;
   if (!fs.existsSync(target) || !fs.statSync(target).isFile()) {
-    // Unknown path without an extension -> app shell (client router shows its own 404).
-    if (path.extname(rel)) return send(res, 404, 'Not found', { 'Content-Type': 'text/plain' });
-    target = path.join(PUBLIC_DIR, 'index.html');
+    const page = path.join(PUBLIC_DIR, '404.html');
+    return send(res, 404, req.method === 'HEAD' ? '' : fs.readFileSync(page), { 'Content-Type': MIME['.html'], 'Cache-Control': 'no-cache' });
   }
   const type = MIME[path.extname(target)] || 'application/octet-stream';
   const cache = target.endsWith('index.html') ? 'no-cache' : 'public, max-age=300';
   send(res, 200, req.method === 'HEAD' ? '' : fs.readFileSync(target), { 'Content-Type': type, 'Cache-Control': cache });
 }
 
-const server = http.createServer(async (req, res) => {
+async function handler(req, res) {
   try {
     const url = new URL(req.url, 'http://localhost');
     const { pathname } = url;
@@ -317,7 +350,8 @@ const server = http.createServer(async (req, res) => {
     console.error(e);
     return sendJson(res, 500, { error: 'Something went wrong' });
   }
-});
+}
+const server = http.createServer(handler);
 
 if (require.main === module) {
   server.listen(PORT, '0.0.0.0', () => console.log(`Stockroom running on port ${PORT}`));
@@ -325,4 +359,4 @@ if (require.main === module) {
   process.on('SIGTERM', stop);
   process.on('SIGINT', stop);
 }
-module.exports = { server };
+module.exports = { server, handler };
